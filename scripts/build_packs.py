@@ -21,6 +21,7 @@ class PackDef:
 
 PACKS: list[PackDef] = [
     PackDef(kind="tv", package="programista_providers_tv", asset="tv_providers.zip"),
+    PackDef(kind="tv_accessibility", package="programista_providers_tv_accessibility", asset="tv_accessibility_providers.zip"),
     PackDef(kind="radio", package="programista_providers_radio", asset="radio_providers.zip"),
     PackDef(kind="archive", package="programista_providers_archive", asset="archive_providers.zip"),
 ]
@@ -87,4 +88,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
