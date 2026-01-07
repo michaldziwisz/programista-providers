@@ -8,6 +8,7 @@ from programista_providers_radio.radiokierowcow import RadioKierowcowProvider
 from programista_providers_radio.nowyswiat import NowySwiatProvider
 from programista_providers_radio.radio357 import Radio357Provider
 from programista_providers_radio.radioolsztyn import RadioOlsztynProvider
+from programista_providers_radio.radiopoznan import RadioPoznanProvider
 
 
 def load(http: HttpClient) -> list[ScheduleProvider]:
@@ -17,4 +18,5 @@ def load(http: HttpClient) -> list[ScheduleProvider]:
         NowySwiatProvider(http),
         Radio357Provider(http),
         RadioOlsztynProvider(http),
+        RadioPoznanProvider(http),
     ]
