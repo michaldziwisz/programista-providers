@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 
@@ -17,6 +19,8 @@ POLSAT_MODULE_URL = "https://www.polsat.pl/tv-html/module/page{page}/"
 class PolsatAccessibilityProvider(ScheduleProvider):
     def __init__(self, http: HttpClient) -> None:
         self._http = http
+        self._lock = threading.RLock()
+        self._day_cache: dict[str, _PolsatDayCache] = {}
 
     @property
     def provider_id(self) -> str:
@@ -45,33 +49,29 @@ class PolsatAccessibilityProvider(ScheduleProvider):
         *,
         force_refresh: bool = False,
     ) -> list[ScheduleItem]:
-        page = (day - date.today()).days + 1
-        if page < 1 or page > 7:
-            return []
+        day_key = day.isoformat()
+        if not force_refresh:
+            with self._lock:
+                cached = self._day_cache.get(day_key)
+                if cached and cached.expires_at > time_module.time():
+                    return cached.by_channel.get(str(source.id), [])
 
-        html = self._fetch_module(page, force_refresh=force_refresh)
-        items = parse_polsat_schedule_from_module(html, channel=str(source.id))
-
-        out: list[ScheduleItem] = []
-        for it in items:
-            out.append(
-                ScheduleItem(
-                    provider_id=ProviderId(self.provider_id),
-                    source=source,
-                    day=day,
-                    start_time=it.start_time,
-                    end_time=it.end_time,
-                    title=it.title,
-                    subtitle=None,
-                    details_ref=None,
-                    details_summary=None,
-                    accessibility=tuple(it.accessibility),
-                )
-            )
-        return out
+        built = self._build_day_cache(day, force_refresh=force_refresh)
+        with self._lock:
+            self._day_cache[day_key] = built
+        return built.by_channel.get(str(source.id), [])
 
     def get_item_details(self, item: ScheduleItem, *, force_refresh: bool = False) -> str:  # noqa: ARG002
         return item.title
+
+    def _build_day_cache(self, day: date, *, force_refresh: bool) -> "_PolsatDayCache":
+        page = (day - date.today()).days + 1
+        if page < 1 or page > 7:
+            return _PolsatDayCache(expires_at=time_module.time() + 60 * 30, by_channel={})
+
+        html = self._fetch_module(page, force_refresh=force_refresh)
+        parsed = parse_polsat_day_from_module(html, day=day)
+        return _PolsatDayCache(expires_at=time_module.time() + 60 * 30, by_channel=parsed)
 
     def _fetch_module(self, page: int, *, force_refresh: bool) -> str:
         url = POLSAT_MODULE_URL.format(page=page)
@@ -124,6 +124,44 @@ def parse_polsat_schedule_from_module(html: str, *, channel: str) -> list[_Polsa
     if not row:
         return []
 
+    return _parse_polsat_row_items(row)
+
+
+def parse_polsat_day_from_module(html: str, *, day: date) -> dict[str, list[ScheduleItem]]:
+    soup = BeautifulSoup(html, "lxml")
+    out: dict[str, list[ScheduleItem]] = {}
+
+    for row in soup.select("div.tv__row[data-channel]"):
+        channel = clean_text(row.get("data-channel") or "")
+        if not channel:
+            continue
+
+        items = _parse_polsat_row_items(row)
+        if not items:
+            continue
+
+        src = Source(provider_id=ProviderId("polsat"), id=SourceId(channel), name=channel)
+        sch: list[ScheduleItem] = []
+        for it in items:
+            sch.append(
+                ScheduleItem(
+                    provider_id=ProviderId("polsat"),
+                    source=src,
+                    day=day,
+                    start_time=it.start_time,
+                    end_time=it.end_time,
+                    title=it.title,
+                    subtitle=None,
+                    details_ref=None,
+                    details_summary=None,
+                    accessibility=tuple(it.accessibility),
+                )
+            )
+        out[channel] = sch
+    return out
+
+
+def _parse_polsat_row_items(row: BeautifulSoup) -> list[_PolsatItem]:
     items: list[_PolsatItem] = []
     for cast in row.select("div.tvcast[data-start][data-end]"):
         start_ms_s = cast.get("data-start") or ""
@@ -184,3 +222,8 @@ def _uniq(features: list[AccessibilityFeature]) -> list[AccessibilityFeature]:
         out.append(f)
     return out
 
+
+@dataclass(frozen=True)
+class _PolsatDayCache:
+    expires_at: float
+    by_channel: dict[str, list[ScheduleItem]]

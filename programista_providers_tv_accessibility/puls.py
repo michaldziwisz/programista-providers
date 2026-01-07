@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import threading
+import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time
 from urllib.parse import urljoin
@@ -20,6 +22,9 @@ PULS_EPG_BASE_URL = "https://tyflo.eu.org/epg/puls/"
 class PulsAccessibilityProvider(ScheduleProvider):
     def __init__(self, http: HttpClient) -> None:
         self._http = http
+        self._lock = threading.RLock()
+        self._files_cache: _PulsFilesCache | None = None
+        self._schedule_cache: dict[str, _PulsScheduleCache] = {}
 
     @property
     def provider_id(self) -> str:
@@ -44,18 +49,8 @@ class PulsAccessibilityProvider(ScheduleProvider):
         for url in [files.tvpuls_url, files.puls2_url]:
             if not url:
                 continue
-            xml = self._http.get_text(
-                url,
-                cache_key=f"puls:epg:{url}",
-                ttl_seconds=60 * 30,
-                force_refresh=force_refresh,
-                timeout_seconds=30.0,
-            )
-            for ds in re.findall(r'actual_time="(\d{4}-\d{2}-\d{2})\s', xml):
-                try:
-                    days.add(date.fromisoformat(ds))
-                except ValueError:
-                    continue
+            schedules = self._get_schedule_map(url, force_refresh=force_refresh)
+            days.update(schedules.keys())
         return sorted(days)
 
     def get_schedule(
@@ -70,14 +65,7 @@ class PulsAccessibilityProvider(ScheduleProvider):
         if not url:
             return []
 
-        xml = self._http.get_text(
-            url,
-            cache_key=f"puls:epg:{str(source.id)}:{url}",
-            ttl_seconds=60 * 30,
-            force_refresh=force_refresh,
-            timeout_seconds=30.0,
-        )
-        items = parse_puls_epg_xml(xml, day)
+        items = self._get_schedule_map(url, force_refresh=force_refresh).get(day) or []
 
         out: list[ScheduleItem] = []
         for it in items:
@@ -101,6 +89,11 @@ class PulsAccessibilityProvider(ScheduleProvider):
         return item.details_summary or item.title
 
     def _resolve_files(self, *, force_refresh: bool) -> "_PulsEpgFiles":
+        if not force_refresh:
+            with self._lock:
+                if self._files_cache and self._files_cache.expires_at > time_module.time():
+                    return self._files_cache.files
+
         html = self._http.get_text(
             PULS_EPG_BASE_URL,
             cache_key="puls:epg:index",
@@ -108,7 +101,29 @@ class PulsAccessibilityProvider(ScheduleProvider):
             force_refresh=force_refresh,
             timeout_seconds=20.0,
         )
-        return parse_puls_epg_index(html, base_url=PULS_EPG_BASE_URL)
+        files = parse_puls_epg_index(html, base_url=PULS_EPG_BASE_URL)
+        with self._lock:
+            self._files_cache = _PulsFilesCache(expires_at=time_module.time() + 60 * 30, files=files)
+        return files
+
+    def _get_schedule_map(self, url: str, *, force_refresh: bool) -> dict[date, list["_PulsItem"]]:
+        if not force_refresh:
+            with self._lock:
+                cached = self._schedule_cache.get(url)
+                if cached and cached.expires_at > time_module.time():
+                    return cached.by_day
+
+        xml = self._http.get_text(
+            url,
+            cache_key=f"puls:epg:{url}",
+            ttl_seconds=60 * 30,
+            force_refresh=force_refresh,
+            timeout_seconds=30.0,
+        )
+        by_day = parse_puls_epg_xml_all_days(xml)
+        with self._lock:
+            self._schedule_cache[url] = _PulsScheduleCache(expires_at=time_module.time() + 60 * 30, by_day=by_day)
+        return by_day
 
 
 @dataclass(frozen=True)
@@ -157,18 +172,36 @@ class _PulsItem:
     sort_key: str
 
 
+@dataclass(frozen=True)
+class _PulsFilesCache:
+    expires_at: float
+    files: _PulsEpgFiles
+
+
+@dataclass(frozen=True)
+class _PulsScheduleCache:
+    expires_at: float
+    by_day: dict[date, list[_PulsItem]]
+
+
 def parse_puls_epg_xml(xml: str, day: date) -> list[_PulsItem]:
+    by_day = parse_puls_epg_xml_all_days(xml)
+    return by_day.get(day) or []
+
+
+def parse_puls_epg_xml_all_days(xml: str) -> dict[date, list[_PulsItem]]:
     try:
         root = ET.fromstring(xml)
     except ET.ParseError:
-        return []
+        return {}
 
-    items: list[_PulsItem] = []
-    day_s = day.isoformat()
+    items_by_day: dict[date, list[_PulsItem]] = {}
 
     for ev in root.findall(".//event"):
         actual = ev.get("actual_time") or ""
-        if not actual.startswith(day_s):
+        try:
+            event_day = date.fromisoformat(actual[:10])
+        except ValueError:
             continue
 
         start_dt = _parse_epg_datetime(actual)
@@ -185,7 +218,7 @@ def parse_puls_epg_xml(xml: str, day: date) -> list[_PulsItem]:
 
         features, synopsis_clean = _extract_accessibility_from_synopsis(synopsis)
 
-        items.append(
+        items_by_day.setdefault(event_day, []).append(
             _PulsItem(
                 start_time=start_dt.time().replace(microsecond=0),
                 end_time=end_dt.time().replace(microsecond=0) if end_dt else None,
@@ -196,8 +229,9 @@ def parse_puls_epg_xml(xml: str, day: date) -> list[_PulsItem]:
             )
         )
 
-    items.sort(key=lambda it: it.sort_key)
-    return items
+    for day_items in items_by_day.values():
+        day_items.sort(key=lambda it: it.sort_key)
+    return items_by_day
 
 
 def _parse_epg_datetime(value: str) -> datetime | None:

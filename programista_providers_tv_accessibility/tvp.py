@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time as time_module
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -18,6 +20,8 @@ TVP_PROGRAM_URL = "https://www.tvp.pl/program-tv"
 class TvpAccessibilityProvider(ScheduleProvider):
     def __init__(self, http: HttpClient) -> None:
         self._http = http
+        self._lock = threading.RLock()
+        self._day_cache: dict[str, _TvpDayCache] = {}
 
     @property
     def provider_id(self) -> str:
@@ -52,38 +56,60 @@ class TvpAccessibilityProvider(ScheduleProvider):
         *,
         force_refresh: bool = False,
     ) -> list[ScheduleItem]:
+        day_key = day.isoformat()
+
+        if not force_refresh:
+            with self._lock:
+                cached = self._day_cache.get(day_key)
+                if cached and cached.expires_at > time_module.time():
+                    return cached.by_station.get(str(source.id), [])
+
+        built = self._build_day_cache(day, force_refresh=force_refresh)
+        with self._lock:
+            self._day_cache[day_key] = built
+        return built.by_station.get(str(source.id), [])
+
+    def get_item_details(self, item: ScheduleItem, *, force_refresh: bool = False) -> str:  # noqa: ARG002
+        return item.details_summary or item.title
+
+    def _build_day_cache(self, day: date, *, force_refresh: bool) -> "_TvpDayCache":
+        day_key = day.isoformat()
         html = self._http.get_text(
-            f"{TVP_PROGRAM_URL}?date={day.isoformat()}",
-            cache_key=f"tvp:program:{day.isoformat()}",
+            f"{TVP_PROGRAM_URL}?date={day_key}",
+            cache_key=f"tvp:program:{day_key}",
             ttl_seconds=60 * 30,
             force_refresh=force_refresh,
             timeout_seconds=20.0,
         )
         schedules = parse_tvp_program_page(html)
-        station = next((s for s in schedules if s.station.slug == str(source.id)), None)
-        if not station:
-            return []
-        items = sorted(station.items, key=lambda it: it.start_ms)
-        out: list[ScheduleItem] = []
-        for it in items:
-            out.append(
-                ScheduleItem(
-                    provider_id=ProviderId(self.provider_id),
-                    source=source,
-                    day=day,
-                    start_time=ms_to_local_time(it.start_ms),
-                    end_time=ms_to_local_time(it.end_ms) if it.end_ms else None,
-                    title=it.title,
-                    subtitle=None,
-                    details_ref=None,
-                    details_summary=it.description,
-                    accessibility=tuple(it.accessibility),
-                )
-            )
-        return out
 
-    def get_item_details(self, item: ScheduleItem, *, force_refresh: bool = False) -> str:  # noqa: ARG002
-        return item.details_summary or item.title
+        by_station: dict[str, list[ScheduleItem]] = {}
+        for sch in schedules:
+            station_src = Source(
+                provider_id=ProviderId(self.provider_id),
+                id=SourceId(sch.station.slug),
+                name=sch.station.name,
+            )
+            items = sorted(sch.items, key=lambda it: it.start_ms)
+            out: list[ScheduleItem] = []
+            for it in items:
+                out.append(
+                    ScheduleItem(
+                        provider_id=ProviderId(self.provider_id),
+                        source=station_src,
+                        day=day,
+                        start_time=ms_to_local_time(it.start_ms),
+                        end_time=ms_to_local_time(it.end_ms) if it.end_ms else None,
+                        title=it.title,
+                        subtitle=None,
+                        details_ref=None,
+                        details_summary=it.description,
+                        accessibility=tuple(it.accessibility),
+                    )
+                )
+            by_station[sch.station.slug] = out
+
+        return _TvpDayCache(expires_at=time_module.time() + 60 * 30, by_station=by_station)
 
 
 @dataclass(frozen=True)
@@ -105,6 +131,12 @@ class _TvpItem:
 class _TvpStationSchedule:
     station: _TvpStation
     items: list[_TvpItem]
+
+
+@dataclass(frozen=True)
+class _TvpDayCache:
+    expires_at: float
+    by_station: dict[str, list[ScheduleItem]]
 
 
 def parse_tvp_stations(html: str) -> list[_TvpStation]:
@@ -234,4 +266,3 @@ def _normalize_station_name(name: str) -> str:
 
 def ms_to_local_time(ts_ms: int) -> time:
     return datetime.fromtimestamp(ts_ms / 1000).time().replace(microsecond=0)
-
