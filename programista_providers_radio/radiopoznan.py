@@ -45,9 +45,10 @@ class RadioPoznanProvider(ScheduleProvider):
         ]
 
     def list_days(self, *, force_refresh: bool = False) -> list[date]:  # noqa: ARG002
-        today = date.today()
-        start = today - timedelta(days=7)
-        return [start + timedelta(days=i) for i in range(14)]
+        # Radio Poznań publishes the schedule for the current day (and sometimes past days),
+        # while future days often show "Brak ramówki" (no schedule). To avoid showing
+        # empty day nodes in the UI, expose only "today" here.
+        return [date.today()]
 
     def get_schedule(
         self,
@@ -174,4 +175,3 @@ def parse_rp_audycje_details_html(html: str) -> str:
     if meta and meta.get("content"):
         return clean_text(str(meta.get("content")))
     return ""
-
