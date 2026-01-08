@@ -67,18 +67,18 @@ class PolsatAccessibilityProvider(ScheduleProvider):
     def _build_day_cache(self, day: date, *, force_refresh: bool) -> "_PolsatDayCache":
         page = (day - date.today()).days + 1
         if page < 1 or page > 7:
-            return _PolsatDayCache(expires_at=time_module.time() + 60 * 30, by_channel={})
+            return _PolsatDayCache(expires_at=time_module.time() + 6 * 3600, by_channel={})
 
         html = self._fetch_module(page, force_refresh=force_refresh)
         parsed = parse_polsat_day_from_module(html, day=day)
-        return _PolsatDayCache(expires_at=time_module.time() + 60 * 30, by_channel=parsed)
+        return _PolsatDayCache(expires_at=time_module.time() + 6 * 3600, by_channel=parsed)
 
     def _fetch_module(self, page: int, *, force_refresh: bool) -> str:
         url = POLSAT_MODULE_URL.format(page=page)
         return self._http.get_text(
             url,
             cache_key=f"polsat:module:{page}",
-            ttl_seconds=60 * 30,
+            ttl_seconds=6 * 3600,
             force_refresh=force_refresh,
             timeout_seconds=20.0,
         )

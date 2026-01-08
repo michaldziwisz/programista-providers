@@ -77,7 +77,7 @@ class TvpAccessibilityProvider(ScheduleProvider):
         html = self._http.get_text(
             f"{TVP_PROGRAM_URL}?date={day_key}",
             cache_key=f"tvp:program:{day_key}",
-            ttl_seconds=60 * 30,
+            ttl_seconds=6 * 3600,
             force_refresh=force_refresh,
             timeout_seconds=20.0,
         )
@@ -109,7 +109,7 @@ class TvpAccessibilityProvider(ScheduleProvider):
                 )
             by_station[sch.station.slug] = out
 
-        return _TvpDayCache(expires_at=time_module.time() + 60 * 30, by_station=by_station)
+        return _TvpDayCache(expires_at=time_module.time() + 6 * 3600, by_station=by_station)
 
 
 @dataclass(frozen=True)

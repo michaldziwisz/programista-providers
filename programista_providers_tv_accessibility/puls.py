@@ -97,13 +97,13 @@ class PulsAccessibilityProvider(ScheduleProvider):
         html = self._http.get_text(
             PULS_EPG_BASE_URL,
             cache_key="puls:epg:index",
-            ttl_seconds=60 * 30,
+            ttl_seconds=6 * 3600,
             force_refresh=force_refresh,
             timeout_seconds=20.0,
         )
         files = parse_puls_epg_index(html, base_url=PULS_EPG_BASE_URL)
         with self._lock:
-            self._files_cache = _PulsFilesCache(expires_at=time_module.time() + 60 * 30, files=files)
+            self._files_cache = _PulsFilesCache(expires_at=time_module.time() + 6 * 3600, files=files)
         return files
 
     def _get_schedule_map(self, url: str, *, force_refresh: bool) -> dict[date, list["_PulsItem"]]:
@@ -116,13 +116,13 @@ class PulsAccessibilityProvider(ScheduleProvider):
         xml = self._http.get_text(
             url,
             cache_key=f"puls:epg:{url}",
-            ttl_seconds=60 * 30,
+            ttl_seconds=6 * 3600,
             force_refresh=force_refresh,
             timeout_seconds=30.0,
         )
         by_day = parse_puls_epg_xml_all_days(xml)
         with self._lock:
-            self._schedule_cache[url] = _PulsScheduleCache(expires_at=time_module.time() + 60 * 30, by_day=by_day)
+            self._schedule_cache[url] = _PulsScheduleCache(expires_at=time_module.time() + 6 * 3600, by_day=by_day)
         return by_day
 
 
