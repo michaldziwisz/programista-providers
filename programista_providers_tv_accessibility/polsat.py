@@ -65,13 +65,39 @@ class PolsatAccessibilityProvider(ScheduleProvider):
         return item.title
 
     def _build_day_cache(self, day: date, *, force_refresh: bool) -> "_PolsatDayCache":
-        page = (day - date.today()).days + 1
-        if page < 1 or page > 7:
+        # The Polsat "pageX" modules represent a rolling 24h window that crosses midnight.
+        # To show an actual calendar day, merge:
+        # - current module page (from ~04:40 of the day to ~04:40 next day)
+        # - previous module page (for the early-morning hours of the day)
+        offset = (day - date.today()).days
+        if offset < 0 or offset > 6:
             return _PolsatDayCache(expires_at=time_module.time() + 6 * 3600, by_channel={})
 
-        html = self._fetch_module(page, force_refresh=force_refresh)
-        parsed = parse_polsat_day_from_module(html, day=day)
-        return _PolsatDayCache(expires_at=time_module.time() + 6 * 3600, by_channel=parsed)
+        pages: list[int] = [offset + 1]
+        if offset > 0:
+            pages.append(offset)
+
+        merged: dict[str, list[ScheduleItem]] = {}
+        for page in pages:
+            html = self._fetch_module(page, force_refresh=force_refresh)
+            parsed = parse_polsat_day_from_module(html, day=day)
+            for ch, items in parsed.items():
+                merged.setdefault(ch, []).extend(items)
+
+        # Keep ordering stable and remove any cross-page duplicates.
+        for ch, items in merged.items():
+            items.sort(key=lambda it: ((it.start_time or time.min), it.title.casefold()))
+            deduped: list[ScheduleItem] = []
+            seen: set[tuple[str, str]] = set()
+            for it in items:
+                key = ((it.start_time.strftime("%H:%M") if it.start_time else ""), it.title.casefold())
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(it)
+            merged[ch] = deduped
+
+        return _PolsatDayCache(expires_at=time_module.time() + 6 * 3600, by_channel=merged)
 
     def _fetch_module(self, page: int, *, force_refresh: bool) -> str:
         url = POLSAT_MODULE_URL.format(page=page)
@@ -143,6 +169,13 @@ def parse_polsat_day_from_module(html: str, *, day: date) -> dict[str, list[Sche
         src = Source(provider_id=ProviderId("polsat"), id=SourceId(channel), name=channel)
         sch: list[ScheduleItem] = []
         for it in items:
+            # The module contains programmes for two calendar dates; keep only items for the requested day.
+            try:
+                start_dt = datetime.fromtimestamp(it.start_ms / 1000)
+            except Exception:  # noqa: BLE001
+                continue
+            if start_dt.date() != day:
+                continue
             sch.append(
                 ScheduleItem(
                     provider_id=ProviderId("polsat"),
@@ -157,7 +190,8 @@ def parse_polsat_day_from_module(html: str, *, day: date) -> dict[str, list[Sche
                     accessibility=tuple(it.accessibility),
                 )
             )
-        out[channel] = sch
+        if sch:
+            out[channel] = sch
     return out
 
 
