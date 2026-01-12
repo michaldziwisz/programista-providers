@@ -4,6 +4,7 @@ import json
 import re
 import threading
 import time as time_module
+import urllib.request
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 
@@ -114,6 +115,12 @@ class Rmf24Provider(ScheduleProvider):
             timeout_seconds=20.0,
         )
         by_day = parse_rmf24_ramowka_json(schedule_json)
+        if not by_day:
+            schedule_json = _fetch_url_text(
+                json_url,
+                timeout_seconds=20.0,
+            )
+            by_day = parse_rmf24_ramowka_json(schedule_json)
 
         with self._lock:
             self._week_cache = _Rmf24WeekCache(expires_at=time_module.time() + 60 * 30, by_day=by_day)
@@ -202,3 +209,25 @@ def _strip_jsonp(text: str) -> str:
     if not m:
         return text
     return m.group(1)
+
+
+def _fetch_url_text(url: str, *, timeout_seconds: float) -> str:
+    req = urllib.request.Request(
+        url,
+        headers={
+            # RMF blocks python-requests UA on this endpoint.
+            "User-Agent": "programista-providers/1.0",
+            "Accept": "application/json,text/plain,*/*",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:  # noqa: S310
+            raw = resp.read()
+            charset = resp.headers.get_content_charset() or "utf-8"
+    except Exception:  # noqa: BLE001
+        return ""
+
+    try:
+        return raw.decode(charset, errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
