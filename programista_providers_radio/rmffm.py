@@ -28,6 +28,9 @@ RMFFM_PAGE_BY_ISO_WEEKDAY: dict[int, str] = {
     7: "/ramowka-0.html",  # Sunday
 }
 
+_RMFFM_TIME_RANGE_RE = re.compile(r"^\s*\d{1,2}[:.]\d{2}\s*[-–—]\s*\d{1,2}[:.]\d{2}\b")
+_RMFFM_TIME_START_RE = re.compile(r"^\s*(\d{1,2}[:.]\d{2})\b\s*(.*)$")
+
 
 @dataclass(frozen=True)
 class _RmfFmProgramme:
@@ -111,7 +114,7 @@ class RmfFmProvider(ScheduleProvider):
             return []
 
         url = f"{RMFFM_BASE}{path}"
-        cache_key = f"rmffm:ramowka:v2:{weekday}"
+        cache_key = f"rmffm:ramowka:v3:{weekday}"
 
         try:
             html = self._http.get_text(
@@ -166,7 +169,15 @@ def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
     if not blocks:
         return []
 
-    programme_block = blocks[0]
+    best: list[_RmfFmProgramme] = []
+    for block in blocks:
+        programmes = _parse_rmffm_programme_block(block)
+        if len(programmes) > len(best):
+            best = programmes
+    return best
+
+
+def _parse_rmffm_programme_block(programme_block) -> list[_RmfFmProgramme]:
     programmes: list[_RmfFmProgramme] = []
 
     current_start: time | None = None
@@ -204,12 +215,12 @@ def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
         if not line_text:
             continue
 
-        if re.match(r"^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\b", line_text):
+        if _RMFFM_TIME_RANGE_RE.match(line_text):
             if current_title:
                 current_details_lines.append(line_text)
             continue
 
-        m = re.match(r"^(\d{1,2}:\d{2})\b\s*(.*)$", line_text)
+        m = _RMFFM_TIME_START_RE.match(line_text)
         if m:
             flush()
             current_start = _parse_time_hhmm_relaxed(m.group(1))
@@ -258,11 +269,15 @@ def _render_nodes_text(nodes: list[object]) -> str:
             parts.append(node.get_text(" ", strip=True))
         else:
             parts.append(str(node))
-    return clean_text(" ".join(parts))
+    text = " ".join(parts)
+    text = text.replace("\xa0", " ")
+    text = text.replace("\ufeff", "").replace("\u200b", "").replace("\u200c", "").replace("\u200d", "").replace("\u2060", "")
+    text = text.replace("–", "-").replace("—", "-")
+    return clean_text(text).strip()
 
 
 def _parse_time_hhmm_relaxed(value: str) -> time | None:
-    t = clean_text(value)
+    t = clean_text(value).replace(".", ":")
     if re.fullmatch(r"\d:\d{2}", t):
         t = "0" + t
     return parse_time_hhmm(t) if t else None
@@ -350,11 +365,43 @@ def _format_debug_details(*, url: str, html: str) -> str:
         except Exception:  # noqa: BLE001
             title = ""
 
+    debug_lines: list[str] = []
+    if html:
+        try:
+            soup = _make_soup(html)
+            row = soup.select_one(".xramowka") or soup
+            blocks = row.select("div.col-12.xlh")
+            debug_lines.append(f"Blocks: {len(blocks)}")
+            for idx, block in enumerate(blocks[:4]):
+                all_lines: list[str] = []
+                for nodes in _split_nodes_by_br(block):
+                    line_text = _render_nodes_text(nodes)
+                    if line_text:
+                        all_lines.append(line_text)
+
+                parsed = 0
+                try:
+                    parsed = len(_parse_rmffm_programme_block(block))
+                except Exception:  # noqa: BLE001
+                    parsed = 0
+
+                start_matches = sum(1 for l in all_lines if _RMFFM_TIME_START_RE.match(l))
+                range_matches = sum(1 for l in all_lines if _RMFFM_TIME_RANGE_RE.match(l))
+                start_text = clean_text(block.get_text(" ", strip=True))[:140]
+                debug_lines.append(
+                    f"Block[{idx}]: parsed={parsed}, lines={len(all_lines)}, start_matches={start_matches}, range_matches={range_matches}, text_start={start_text}"
+                )
+                for sample_idx, sample in enumerate(all_lines[:3]):
+                    debug_lines.append(f"Line[{idx}.{sample_idx}]: {sample[:180]}")
+        except Exception:  # noqa: BLE001
+            pass
+
     lines = [
         "Nie udało się pobrać lub sparsować ramówki.",
         f"URL: {url}",
         f"HTML len: {len(html)}",
         f"HTML title: {title}" if title else "HTML title: (brak)",
         "Flags: " + ", ".join(f"{k}={v}" for k, v in contains.items()),
+        *debug_lines,
     ]
     return "\n".join(lines)
