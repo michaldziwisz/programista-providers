@@ -143,7 +143,13 @@ class RmfFmProvider(ScheduleProvider):
             programmes = _safe_parse_rmffm_ramowka_html(html)
 
         if not programmes:
-            return []
+            return [
+                _RmfFmProgramme(
+                    start=time(12, 0),
+                    title="Brak ramówki RMF FM",
+                    details=_format_debug_details(url=url, html=html),
+                )
+            ]
 
         with self._lock:
             self._cache_by_weekday[weekday] = _RmfFmDayCache(
@@ -324,3 +330,31 @@ def _normalize_wraparound_programmes(programmes: list[_RmfFmProgramme]) -> list[
     if pivot is None:
         return programmes
     return programmes[pivot:] + programmes[:pivot]
+
+
+def _format_debug_details(*, url: str, html: str) -> str:
+    lowered = html.casefold()
+    contains = {
+        "ramowka": "ramowka" in lowered or "ramówka" in lowered,
+        "xramowka": "xramowka" in lowered,
+        "salted": "salted" in lowered,
+        "cookies": "cookie" in lowered or "rodo" in lowered,
+    }
+
+    title = ""
+    if html:
+        try:
+            soup = _make_soup(html)
+            title_el = soup.select_one("title")
+            title = clean_text(title_el.get_text(" ")) if title_el else ""
+        except Exception:  # noqa: BLE001
+            title = ""
+
+    lines = [
+        "Nie udało się pobrać lub sparsować ramówki.",
+        f"URL: {url}",
+        f"HTML len: {len(html)}",
+        f"HTML title: {title}" if title else "HTML title: (brak)",
+        "Flags: " + ", ".join(f"{k}={v}" for k, v in contains.items()),
+    ]
+    return "\n".join(lines)
