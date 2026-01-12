@@ -227,7 +227,7 @@ def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
             continue
         seen.add(key)
         deduped.append(p)
-    return deduped
+    return _trim_wraparound_programmes(deduped)
 
 
 def _split_nodes_by_br(container) -> list[list[object]]:
@@ -308,3 +308,14 @@ def _fetch_url_text(url: str, *, timeout_seconds: float) -> str:
         return raw.decode(charset, errors="replace")
     except LookupError:
         return raw.decode("utf-8", errors="replace")
+
+
+def _trim_wraparound_programmes(programmes: list[_RmfFmProgramme]) -> list[_RmfFmProgramme]:
+    last_start: time | None = None
+    for idx, p in enumerate(programmes):
+        if not p.start:
+            continue
+        if last_start and p.start < last_start:
+            return programmes[:idx]
+        last_start = p.start
+    return programmes
