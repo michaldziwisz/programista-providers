@@ -36,16 +36,16 @@ class _RmfFmProgramme:
 
 
 @dataclass(frozen=True)
-class _RmfFmWeekCache:
+class _RmfFmDayCache:
     expires_at: float
-    by_weekday: dict[int, list[_RmfFmProgramme]]
+    programmes: list[_RmfFmProgramme]
 
 
 class RmfFmProvider(ScheduleProvider):
     def __init__(self, http: HttpClient) -> None:
         self._http = http
         self._lock = threading.RLock()
-        self._week_cache: _RmfFmWeekCache | None = None
+        self._cache_by_weekday: dict[int, _RmfFmDayCache] = {}
 
     @property
     def provider_id(self) -> str:
@@ -79,7 +79,7 @@ class RmfFmProvider(ScheduleProvider):
             return []
 
         weekday = day.isoweekday()  # Monday=1..Sunday=7
-        programmes = self._get_week_map(force_refresh=force_refresh).get(weekday) or []
+        programmes = self._get_day_programmes(weekday, force_refresh=force_refresh)
         return [
             ScheduleItem(
                 provider_id=ProviderId(self.provider_id),
@@ -98,14 +98,18 @@ class RmfFmProvider(ScheduleProvider):
     def get_item_details(self, item: ScheduleItem, *, force_refresh: bool = False) -> str:  # noqa: ARG002
         return item.details_summary or item.title
 
-    def _get_week_map(self, *, force_refresh: bool) -> dict[int, list[_RmfFmProgramme]]:
+    def _get_day_programmes(self, weekday: int, *, force_refresh: bool) -> list[_RmfFmProgramme]:
         if not force_refresh:
             with self._lock:
-                if self._week_cache and self._week_cache.expires_at > time_module.time():
-                    return self._week_cache.by_weekday
+                cached = self._cache_by_weekday.get(weekday)
+                if cached and cached.expires_at > time_module.time():
+                    return cached.programmes
 
-        by_weekday: dict[int, list[_RmfFmProgramme]] = {}
-        for weekday, path in RMFFM_PAGE_BY_ISO_WEEKDAY.items():
+        path = RMFFM_PAGE_BY_ISO_WEEKDAY.get(weekday)
+        if not path:
+            return []
+
+        try:
             html = self._http.get_text(
                 f"{RMFFM_BASE}{path}",
                 cache_key=f"rmffm:ramowka:{weekday}",
@@ -113,11 +117,16 @@ class RmfFmProvider(ScheduleProvider):
                 force_refresh=force_refresh,
                 timeout_seconds=20.0,
             )
-            by_weekday[weekday] = parse_rmffm_ramowka_html(html)
+        except Exception:  # noqa: BLE001
+            return []
 
+        programmes = parse_rmffm_ramowka_html(html)
         with self._lock:
-            self._week_cache = _RmfFmWeekCache(expires_at=time_module.time() + 6 * 3600, by_weekday=by_weekday)
-        return by_weekday
+            self._cache_by_weekday[weekday] = _RmfFmDayCache(
+                expires_at=time_module.time() + 6 * 3600,
+                programmes=programmes,
+            )
+        return programmes
 
 
 def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
@@ -240,4 +249,3 @@ def _split_title_details(rest: str) -> tuple[str, str]:
 
     title_part, details_part = normalized.rsplit(" - ", 1)
     return (clean_text(title_part), clean_text(details_part))
-
