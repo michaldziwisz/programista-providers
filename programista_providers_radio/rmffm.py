@@ -204,12 +204,12 @@ def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
         if not line_text:
             continue
 
-        if re.match(r"^\\d{1,2}:\\d{2}\\s*-\\s*\\d{1,2}:\\d{2}\\b", line_text):
+        if re.match(r"^\d{1,2}:\d{2}\s*-\s*\d{1,2}:\d{2}\b", line_text):
             if current_title:
                 current_details_lines.append(line_text)
             continue
 
-        m = re.match(r"^(\\d{1,2}:\\d{2})\\b\\s*(.*)$", line_text)
+        m = re.match(r"^(\d{1,2}:\d{2})\b\s*(.*)$", line_text)
         if m:
             flush()
             current_start = _parse_time_hhmm_relaxed(m.group(1))
@@ -263,7 +263,7 @@ def _render_nodes_text(nodes: list[object]) -> str:
 
 def _parse_time_hhmm_relaxed(value: str) -> time | None:
     t = clean_text(value)
-    if re.fullmatch(r"\\d:\\d{2}", t):
+    if re.fullmatch(r"\d:\d{2}", t):
         t = "0" + t
     return parse_time_hhmm(t) if t else None
 
