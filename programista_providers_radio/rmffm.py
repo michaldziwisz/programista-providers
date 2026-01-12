@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 import threading
 import time as time_module
+import urllib.request
 from dataclasses import dataclass
 from datetime import date, time, timedelta
 
@@ -109,18 +110,41 @@ class RmfFmProvider(ScheduleProvider):
         if not path:
             return []
 
+        url = f"{RMFFM_BASE}{path}"
+        cache_key = f"rmffm:ramowka:v2:{weekday}"
+
         try:
             html = self._http.get_text(
-                f"{RMFFM_BASE}{path}",
-                cache_key=f"rmffm:ramowka:{weekday}",
+                url,
+                cache_key=cache_key,
                 ttl_seconds=6 * 3600,
                 force_refresh=force_refresh,
                 timeout_seconds=20.0,
             )
         except Exception:  # noqa: BLE001
+            html = ""
+
+        programmes = _safe_parse_rmffm_ramowka_html(html)
+        if not programmes and not force_refresh:
+            try:
+                html = self._http.get_text(
+                    url,
+                    cache_key=cache_key,
+                    ttl_seconds=6 * 3600,
+                    force_refresh=True,
+                    timeout_seconds=20.0,
+                )
+            except Exception:  # noqa: BLE001
+                html = ""
+            programmes = _safe_parse_rmffm_ramowka_html(html)
+
+        if not programmes:
+            html = _fetch_url_text(url, timeout_seconds=20.0)
+            programmes = _safe_parse_rmffm_ramowka_html(html)
+
+        if not programmes:
             return []
 
-        programmes = parse_rmffm_ramowka_html(html)
         with self._lock:
             self._cache_by_weekday[weekday] = _RmfFmDayCache(
                 expires_at=time_module.time() + 6 * 3600,
@@ -130,7 +154,7 @@ class RmfFmProvider(ScheduleProvider):
 
 
 def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
-    soup = BeautifulSoup(html, "lxml")
+    soup = _make_soup(html)
     row = soup.select_one(".xramowka") or soup
     blocks = row.select("div.col-12.xlh")
     if not blocks:
@@ -249,3 +273,38 @@ def _split_title_details(rest: str) -> tuple[str, str]:
 
     title_part, details_part = normalized.rsplit(" - ", 1)
     return (clean_text(title_part), clean_text(details_part))
+
+
+def _safe_parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
+    try:
+        return parse_rmffm_ramowka_html(html)
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _make_soup(html: str) -> BeautifulSoup:
+    try:
+        return BeautifulSoup(html, "lxml")
+    except Exception:  # noqa: BLE001
+        return BeautifulSoup(html, "html.parser")
+
+
+def _fetch_url_text(url: str, *, timeout_seconds: float) -> str:
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "programista-providers/1.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:  # noqa: S310
+            raw = resp.read()
+            charset = resp.headers.get_content_charset() or "utf-8"
+    except Exception:  # noqa: BLE001
+        return ""
+
+    try:
+        return raw.decode(charset, errors="replace")
+    except LookupError:
+        return raw.decode("utf-8", errors="replace")
