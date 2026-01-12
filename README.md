@@ -12,6 +12,11 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `radiokierowcow` — Radio Kierowców (`https://radiokierowcow.pl/ramowka`)
 - `nowyswiat` — Radio Nowy Świat (`https://nowyswiat.online/ramowka`)
 - `radio357` — Radio 357 (`https://radio357.pl/ramowka/`)
+- `radioolsztyn` — Radio Olsztyn (`https://radioolsztyn.pl/mvc/ramowka/date/`)
+- `radiopoznan` — Radio Poznań (`https://radiopoznan.fm/program/`)
+- `radiowroclaw` — Radio Wrocław (`https://www.radiowroclaw.pl/broadcasts/view/`)
+- `tokfm` — TOK FM (`https://audycje.tokfm.pl/ramowka`)
+- `rmf24` — RMF24 (`https://www.rmf24.pl/radio`)
 
 ### Archiwum (`archive_providers.zip`)
 - `fandom-archive` — staratelewizja.fandom.com (`https://staratelewizja.fandom.com/pl/wiki/Strona_g%C5%82%C3%B3wna`)
