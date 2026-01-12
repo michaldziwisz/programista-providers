@@ -4,8 +4,8 @@ from tvguide_app.core.http import HttpClient
 from tvguide_app.core.providers.base import ScheduleProvider
 
 from programista_providers_tv.teleman import TelemanProvider
+from programista_providers_tv.tvp_extra import TvpExtraTvProvider
 
 
 def load(http: HttpClient) -> list[ScheduleProvider]:
-    return [TelemanProvider(http)]
-
+    return [TelemanProvider(http), TvpExtraTvProvider(http)]
