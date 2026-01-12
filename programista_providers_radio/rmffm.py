@@ -227,7 +227,7 @@ def parse_rmffm_ramowka_html(html: str) -> list[_RmfFmProgramme]:
             continue
         seen.add(key)
         deduped.append(p)
-    return _trim_wraparound_programmes(deduped)
+    return _normalize_wraparound_programmes(deduped)
 
 
 def _split_nodes_by_br(container) -> list[list[object]]:
@@ -310,12 +310,17 @@ def _fetch_url_text(url: str, *, timeout_seconds: float) -> str:
         return raw.decode("utf-8", errors="replace")
 
 
-def _trim_wraparound_programmes(programmes: list[_RmfFmProgramme]) -> list[_RmfFmProgramme]:
+def _normalize_wraparound_programmes(programmes: list[_RmfFmProgramme]) -> list[_RmfFmProgramme]:
+    pivot: int | None = None
     last_start: time | None = None
     for idx, p in enumerate(programmes):
         if not p.start:
             continue
         if last_start and p.start < last_start:
-            return programmes[:idx]
+            pivot = idx
+            break
         last_start = p.start
-    return programmes
+
+    if pivot is None:
+        return programmes
+    return programmes[pivot:] + programmes[:pivot]
