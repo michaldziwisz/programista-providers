@@ -9,6 +9,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 
 ### Radio (`radio_providers.zip`)
 - `polskieradio` — Polskie Radio (`https://www.polskieradio.pl/Portal/Schedule/Schedule.aspx`)
+- `polskieradio-chopin` — Polskie Radio Chopin (`https://chopin.polskieradio.pl/ramowka`)
 - `radiokierowcow` — Radio Kierowców (`https://radiokierowcow.pl/ramowka`)
 - `nowyswiat` — Radio Nowy Świat (`https://nowyswiat.online/ramowka`)
 - `radio357` — Radio 357 (`https://radio357.pl/ramowka/`)

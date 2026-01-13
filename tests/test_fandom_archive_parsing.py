@@ -6,12 +6,9 @@ import unittest
 
 
 def _install_tvguide_app_stubs() -> None:
-    if "tvguide_app" in sys.modules:
-        return
-
-    tvguide_app = types.ModuleType("tvguide_app")
-    core = types.ModuleType("tvguide_app.core")
-    util = types.ModuleType("tvguide_app.core.util")
+    tvguide_app = sys.modules.get("tvguide_app") or types.ModuleType("tvguide_app")
+    core = sys.modules.get("tvguide_app.core") or types.ModuleType("tvguide_app.core")
+    util = sys.modules.get("tvguide_app.core.util") or types.ModuleType("tvguide_app.core.util")
 
     util.POLISH_MONTHS_GENITIVE = {
         1: "Stycznia",
@@ -33,20 +30,41 @@ def _install_tvguide_app_stubs() -> None:
             return ""
         return re.sub(r"\s+", " ", str(text)).strip()
 
+    def clean_multiline_text(text: str) -> str:
+        if text is None:
+            return ""
+        s = str(text)
+        s = s.replace("\r\n", "\n").replace("\r", "\n")
+        lines = [re.sub(r"[ \t]+", " ", line).strip() for line in s.split("\n")]
+        out: list[str] = []
+        blank = False
+        for line in lines:
+            if not line:
+                if out and not blank:
+                    out.append("")
+                blank = True
+                continue
+            out.append(line)
+            blank = False
+        while out and out[-1] == "":
+            out.pop()
+        return "\n".join(out).strip()
+
     def parse_time_hhmm(value: str) -> datetime.time:
         hh, mm = value.split(":", 1)
         return datetime.time(int(hh), int(mm))
 
     util.clean_text = clean_text
+    util.clean_multiline_text = clean_multiline_text
     util.parse_time_hhmm = parse_time_hhmm
 
-    http = types.ModuleType("tvguide_app.core.http")
+    http = sys.modules.get("tvguide_app.core.http") or types.ModuleType("tvguide_app.core.http")
 
     class HttpClient: ...
 
     http.HttpClient = HttpClient
 
-    models = types.ModuleType("tvguide_app.core.models")
+    models = sys.modules.get("tvguide_app.core.models") or types.ModuleType("tvguide_app.core.models")
 
     class ProviderId(str): ...
 
@@ -61,13 +79,17 @@ def _install_tvguide_app_stubs() -> None:
     models.Source = Source
     models.ScheduleItem = ScheduleItem
 
-    providers_base = types.ModuleType("tvguide_app.core.providers.base")
+    providers_base = sys.modules.get("tvguide_app.core.providers.base") or types.ModuleType(
+        "tvguide_app.core.providers.base"
+    )
 
     class ScheduleProvider: ...
 
     providers_base.ScheduleProvider = ScheduleProvider
 
-    providers_archive = types.ModuleType("tvguide_app.core.providers.archive_base")
+    providers_archive = sys.modules.get("tvguide_app.core.providers.archive_base") or types.ModuleType(
+        "tvguide_app.core.providers.archive_base"
+    )
 
     class ArchiveProvider: ...
 
@@ -169,4 +191,3 @@ class TestFandomArchiveParsing(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
