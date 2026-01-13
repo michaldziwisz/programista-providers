@@ -25,6 +25,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 ### TV z udogodnieniami (`tv_accessibility_providers.zip`)
 - `tvp` — TVP (`https://www.tvp.pl/program-tv`) (napisy / język migowy / audiodeskrypcja)
 - `polsat` — Polsat (`https://www.polsat.pl/tv-html/`) (napisy / język migowy / audiodeskrypcja)
+- `fokustv` — Fokus TV (`https://www.fokus.tv/program-tv/`) (napisy / język migowy / audiodeskrypcja)
 - `puls` — TV Puls (`https://tyflo.eu.org/epg/puls/`) (napisy / język migowy / audiodeskrypcja)
 
 ## Artefakty (GitHub Releases)
