@@ -188,12 +188,24 @@ def parse_tokfm_ramowka_html(html: str) -> dict[int, list[_TokProgramme]]:
 
 def parse_tokfm_details_html(html: str) -> str:
     soup = BeautifulSoup(html, "lxml")
-    meta = soup.select_one('meta[name="description"]')
-    if meta and meta.get("content"):
-        return clean_text(str(meta.get("content")))
     og = soup.select_one('meta[property="og:description"]')
     if og and og.get("content"):
-        return clean_text(str(og.get("content")))
+        og_desc = clean_text(str(og.get("content")))
+    else:
+        og_desc = ""
+
+    meta = soup.select_one('meta[name="description"]')
+    if meta and meta.get("content"):
+        meta_desc = clean_text(str(meta.get("content")))
+    else:
+        meta_desc = ""
+
+    # TOK FM pages often include a truncated meta description, while the OpenGraph
+    # description contains the full text. Prefer the longer one.
+    if og_desc and (not meta_desc or len(og_desc) >= len(meta_desc)):
+        return og_desc
+    if meta_desc:
+        return meta_desc
     return ""
 
 
