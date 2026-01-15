@@ -16,6 +16,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `radioolsztyn` — Radio Olsztyn (`https://radioolsztyn.pl/mvc/ramowka/date/`)
 - `radiopoznan` — Radio Poznań (`https://radiopoznan.fm/program/`)
 - `radiogdansk` — Radio Gdańsk (`https://radiogdansk.pl/ramowka-radia-gdansk/`)
+- `radioszczecin` — Radio Szczecin (`https://radioszczecin.pl/9,0,program-radia-szczecin`)
 - `radiowroclaw` — Radio Wrocław (`https://www.radiowroclaw.pl/broadcasts/view/`)
 - `tokfm` — TOK FM (`https://audycje.tokfm.pl/ramowka`)
 - `rmf24` — RMF24 (`https://www.rmf24.pl/radio`)
