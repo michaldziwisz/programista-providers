@@ -16,6 +16,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `radioolsztyn` — Radio Olsztyn (`https://radioolsztyn.pl/mvc/ramowka/date/`)
 - `radiopoznan` — Radio Poznań (`https://radiopoznan.fm/program/`)
 - `radiogdansk` — Radio Gdańsk (`https://radiogdansk.pl/ramowka-radia-gdansk/`)
+- `radiokatowice` — Radio Katowice (`https://www.radio.katowice.pl/ramowka.html`)
 - `radioszczecin` — Radio Szczecin (`https://radioszczecin.pl/9,0,program-radia-szczecin`)
 - `radiozachod` — Radio Zachód (`https://zachod.pl/ramowka/`)
 - `radiowroclaw` — Radio Wrocław (`https://www.radiowroclaw.pl/broadcasts/view/`)
