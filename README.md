@@ -22,6 +22,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `tokfm` — TOK FM (`https://audycje.tokfm.pl/ramowka`)
 - `rmf24` — RMF24 (`https://www.rmf24.pl/radio`)
 - `rmffm` — RMF FM (`https://www.rmf.fm/ramowka/`)
+- `rmfclassic` — RMF Classic (`https://www.rmfclassic.pl/radio/ramowka`)
 
 ### Archiwum (`archive_providers.zip`)
 - `fandom-archive` — staratelewizja.fandom.com (`https://staratelewizja.fandom.com/pl/wiki/Strona_g%C5%82%C3%B3wna`)
