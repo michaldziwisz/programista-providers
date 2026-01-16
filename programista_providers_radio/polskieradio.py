@@ -114,11 +114,12 @@ class PolskieRadioProvider(ScheduleProvider):
         ) or item.title
 
     def _get_multischedule(self, day: date, *, force_refresh: bool) -> dict[str, list[_PrItem]]:
-        day_s = day.isoformat()
-        cache_key = f"pr:multischedule:{day_s}"
+        day_cache_key = day.isoformat()
+        cache_key = f"pr:multischedule:{day_cache_key}"
+        selected_date = day.strftime("%Y%m%d")
         html = self._http.post_form_text(
             PR_MULTISCHEDULE_URL,
-            data={"selectedDate": day_s},
+            data={"selectedDate": selected_date},
             cache_key=cache_key,
             ttl_seconds=60 * 30,
             force_refresh=force_refresh,
@@ -285,4 +286,3 @@ def _normalize_pr_description(text: str) -> str:
     if len(t) <= 2:
         return ""
     return t
-
