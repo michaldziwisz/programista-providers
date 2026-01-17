@@ -6,6 +6,7 @@ from tvguide_app.core.providers.base import ScheduleProvider
 from programista_providers_radio.polskieradio import PolskieRadioProvider
 from programista_providers_radio.polskieradio_chopin import PolskieRadioChopinProvider
 from programista_providers_radio.radiokierowcow import RadioKierowcowProvider
+from programista_providers_radio.radiokielce import RadioKielceProvider
 from programista_providers_radio.nowyswiat import NowySwiatProvider
 from programista_providers_radio.radio357 import Radio357Provider
 from programista_providers_radio.radioolsztyn import RadioOlsztynProvider
@@ -26,6 +27,7 @@ def load(http: HttpClient) -> list[ScheduleProvider]:
         PolskieRadioProvider(http),
         PolskieRadioChopinProvider(http),
         RadioKierowcowProvider(http),
+        RadioKielceProvider(http),
         NowySwiatProvider(http),
         Radio357Provider(http),
         RadioOlsztynProvider(http),
