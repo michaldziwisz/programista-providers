@@ -19,6 +19,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `radiogdansk` — Radio Gdańsk (`https://radiogdansk.pl/ramowka-radia-gdansk/`)
 - `radiokatowice` — Radio Katowice (`https://www.radio.katowice.pl/ramowka.html`)
 - `radioszczecin` — Radio Szczecin (`https://radioszczecin.pl/9,0,program-radia-szczecin`)
+- `radiozet` — Radio ZET (`https://player.radiozet.pl/Ramowka`)
 - `radiozachod` — Radio Zachód (`https://zachod.pl/ramowka/`)
 - `radiowroclaw` — Radio Wrocław (`https://www.radiowroclaw.pl/broadcasts/view/`)
 - `tokfm` — TOK FM (`https://audycje.tokfm.pl/ramowka`)
