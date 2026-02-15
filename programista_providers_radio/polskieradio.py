@@ -1,27 +1,28 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass
-from datetime import date, time, timedelta
-from urllib.parse import urljoin
-
-from bs4 import BeautifulSoup
+from datetime import date, datetime, time, timedelta
 
 from tvguide_app.core.http import HttpClient
 from tvguide_app.core.models import ProviderId, ScheduleItem, Source, SourceId
 from tvguide_app.core.providers.base import ScheduleProvider
-from tvguide_app.core.util import clean_multiline_text, clean_text, parse_time_hhmm
-
-
-PR_BASE = "https://www.polskieradio.pl"
-PR_MULTISCHEDULE_URL = (
-    "https://www.polskieradio.pl/Portal/Schedule/AjaxPages/AjaxGetMultiScheduleView.aspx"
-)
-PR_DETAILS_URL = "https://www.polskieradio.pl/Portal/Schedule/AjaxPages/AjaxGetProgrammeDetails.aspx"
+from tvguide_app.core.util import clean_multiline_text, clean_text
 
 
 PR_CHANNELS: list[str] = ["Jedynka", "Dwójka", "Trójka", "Czwórka", "Radio Poland", "PR24"]
+
+PR_SCHEDULE_API_URL = "https://apipr.polskieradio.pl/api/schedule"
+
+# Mapping based on the official `apipr.polskieradio.pl` schedule endpoint.
+PR_PROGRAM_ID_BY_CHANNEL: dict[str, str] = {
+    "Jedynka": "1",
+    "Dwójka": "2",
+    "Trójka": "3",
+    "Czwórka": "4",
+    "Radio Poland": "5",
+    "PR24": "6",
+}
 
 
 class PolskieRadioProvider(ScheduleProvider):
@@ -54,235 +55,139 @@ class PolskieRadioProvider(ScheduleProvider):
         *,
         force_refresh: bool = False,
     ) -> list[ScheduleItem]:
-        all_by_channel = self._get_multischedule(day, force_refresh=force_refresh)
-        items = all_by_channel.get(source.name, [])
+        programme_id = PR_PROGRAM_ID_BY_CHANNEL.get(source.name)
+        if not programme_id:
+            return []
+
+        schedule_json = self._http.get_text(
+            _build_pr_schedule_url(programme_id, day),
+            cache_key=f"pr:schedule:v2:{programme_id}:{day.isoformat()}",
+            ttl_seconds=60 * 30,
+            force_refresh=force_refresh,
+            timeout_seconds=20.0,
+        )
+        items = parse_pr_schedule_json(schedule_json)
         return [
             ScheduleItem(
                 provider_id=ProviderId(self.provider_id),
                 source=source,
                 day=day,
                 start_time=item.start_time,
-                end_time=None,
+                end_time=item.end_time,
                 title=item.title,
                 subtitle=None,
                 details_ref=item.details_ref,
-                details_summary=None,
+                details_summary=item.details_summary or None,
             )
             for item in items
         ]
 
     def get_item_details(self, item: ScheduleItem, *, force_refresh: bool = False) -> str:
-        if not item.details_ref:
-            return item.title
-
-        cache_key = f"pr:details:{item.details_ref}"
-        html = self._http.post_form_text(
-            PR_DETAILS_URL,
-            data=parse_details_ref(item.details_ref),
-            cache_key=cache_key,
-            ttl_seconds=7 * 24 * 3600,
-            force_refresh=force_refresh,
-        )
-        popup = parse_pr_programme_details_popup_html(html)
-        lead = popup.lead
-        description = popup.description
-
-        if (not lead and not description) and popup.programme_href:
-            programme_url = urljoin(PR_BASE, popup.programme_href)
-            try:
-                programme_html = self._http.get_text(
-                    programme_url,
-                    cache_key=f"pr:programme:{popup.programme_href}",
-                    ttl_seconds=30 * 24 * 3600,
-                    force_refresh=force_refresh,
-                )
-            except Exception:  # noqa: BLE001
-                programme_html = ""
-
-            if programme_html:
-                programme = parse_pr_programme_page_html(programme_html)
-                if programme.lead:
-                    lead = programme.lead
-                if programme.description:
-                    description = programme.description
-
-        return format_pr_programme_details(
-            start_time=popup.start_time,
-            title=popup.title,
-            lead=lead,
-            description=description,
-        ) or item.title
-
-    def _get_multischedule(self, day: date, *, force_refresh: bool) -> dict[str, list[_PrItem]]:
-        day_cache_key = day.isoformat()
-        cache_key = f"pr:multischedule:{day_cache_key}"
-        selected_date = day.strftime("%Y%m%d")
-        html = self._http.post_form_text(
-            PR_MULTISCHEDULE_URL,
-            data={"selectedDate": selected_date},
-            cache_key=cache_key,
-            ttl_seconds=60 * 30,
-            force_refresh=force_refresh,
-        )
-        return parse_pr_multischedule_html(html, day, PR_CHANNELS)
+        return item.details_summary or item.title
 
 
 @dataclass(frozen=True)
 class _PrItem:
     start_time: time | None
+    end_time: time | None
     title: str
     details_ref: str | None
+    details_summary: str
 
 
-def parse_details_ref(details_ref: str) -> dict[str, str]:
-    schedule_id, programme_id, start_time, selected_date = details_ref.split("|", 3)
-    return {
-        "scheduleId": schedule_id,
-        "programmeId": programme_id,
-        "startTime": start_time,
-        "selectedDate": selected_date,
-    }
+def _build_pr_schedule_url(programme_id: str, day: date) -> str:
+    return f"{PR_SCHEDULE_API_URL}?Program={programme_id}&selectedDate={day.isoformat()}"
 
 
-def parse_pr_multischedule_html(html: str, day: date, channel_order: list[str]) -> dict[str, list[_PrItem]]:
-    soup = BeautifulSoup(html, "lxml")
-    containers = soup.select("div.scheduleViewContainer")
-    by_channel: dict[str, list[_PrItem]] = {}
-    for idx, container in enumerate(containers):
-        if idx >= len(channel_order):
-            break
-        channel = channel_order[idx]
-        items: list[_PrItem] = []
-        for li in container.select("li"):
-            a = li.find("a", onclick=True)
-            if not a:
-                continue
-            onclick = a.get("onclick") or ""
-            details_ref = parse_onclick_details_ref(onclick)
-            title = _extract_programme_title(a)
-            start = None
-            start_span = li.select_one("span.sTime") or li.select_one(".emitedNowProgrammeStartHour")
-            if start_span:
-                start = parse_time_hhmm(clean_text(start_span.get_text()))
-            items.append(_PrItem(start_time=start, title=title, details_ref=details_ref))
-        by_channel[channel] = items
-    return by_channel
-
-
-def parse_onclick_details_ref(onclick: str) -> str | None:
-    m = re.search(
-        r"showProgrammeDetails\(\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*\)",
-        onclick,
-    )
-    if not m:
-        return None
-    return "|".join([m.group(1), m.group(2), m.group(3), m.group(4)])
-
-
-def _extract_programme_title(a) -> str:
-    title_el = a.select_one("span.desc") or a.select_one("span.title") or a.select_one(".desc")
-    if title_el:
-        t = clean_text(title_el.get_text(" "))
-        if t:
-            return t
-
-    title_attr = clean_text(a.get("title") or "")
-    if title_attr:
-        return title_attr
-
-    return clean_text(a.get_text(" "))
-
-
-@dataclass(frozen=True)
-class PrProgrammeDetailsPopup:
-    start_time: str
-    title: str
-    lead: str
-    description: str
-    programme_href: str | None
-
-
-@dataclass(frozen=True)
-class PrProgrammePageDetails:
-    lead: str
-    description: str
-
-
-def parse_pr_programme_details_popup_html(html: str) -> PrProgrammeDetailsPopup:
-    soup = BeautifulSoup(html, "lxml")
-
-    start_time_el = soup.select_one("#programmeDetails_lblProgrammeStartTime")
-    programme_title_el = soup.select_one("#programmeDetails_lblProgrammeTitle")
-    lead_el = soup.select_one("#programmeDetails_lblProgrammeLead")
-    description_el = soup.select_one("#programmeDetails_lblProgrammeDescription")
-    website_el = soup.select_one("#programmeDetails_hypProgrammeWebsite")
-
-    start_time_s = clean_text(start_time_el.get_text(" ")) if start_time_el else ""
-    title_s = clean_text(programme_title_el.get_text(" ")) if programme_title_el else ""
-    lead_s = clean_multiline_text(lead_el.get_text("\n")) if lead_el else ""
-
-    desc_s = ""
-    if description_el:
-        desc_s = clean_multiline_text(description_el.get_text("\n"))
-
-    programme_href = None
-    if website_el:
-        href = website_el.get("href")
-        if isinstance(href, str) and href.strip():
-            programme_href = href.strip()
-
-    return PrProgrammeDetailsPopup(
-        start_time=start_time_s,
-        title=title_s,
-        lead=_normalize_pr_description(lead_s),
-        description=_normalize_pr_description(desc_s),
-        programme_href=programme_href,
-    )
-
-
-def parse_pr_programme_page_html(html: str) -> PrProgrammePageDetails:
-    soup = BeautifulSoup(html, "lxml")
-    script = soup.find("script", id="__NEXT_DATA__")
-    if not script or not script.string:
-        return PrProgrammePageDetails(lead="", description="")
-
+def parse_pr_schedule_json(text: str) -> list[_PrItem]:
     try:
-        data = json.loads(script.string)
+        data = json.loads(text)
     except json.JSONDecodeError:
-        return PrProgrammePageDetails(lead="", description="")
+        return []
 
-    details = data.get("props", {}).get("pageProps", {}).get("details", {})
-    if not isinstance(details, dict):
-        return PrProgrammePageDetails(lead="", description="")
+    schedule = data.get("Schedule")
+    if not isinstance(schedule, list):
+        return []
 
-    lead_raw = details.get("lead", "")
-    desc_html = details.get("description", "")
+    parsed: list[tuple[datetime | None, _PrItem]] = []
+    for raw in schedule:
+        if not isinstance(raw, dict):
+            continue
 
-    lead = clean_multiline_text(str(lead_raw)) if lead_raw else ""
+        title = clean_text(raw.get("Title") or "")
+        if not title:
+            continue
 
-    desc_text = ""
-    if desc_html:
-        desc_text = clean_multiline_text(BeautifulSoup(str(desc_html), "lxml").get_text("\n"))
+        start_dt = _parse_iso_datetime(raw.get("StartHour"))
+        end_dt = _parse_iso_datetime(raw.get("StopHour"))
 
-    return PrProgrammePageDetails(
-        lead=_normalize_pr_description(lead),
-        description=_normalize_pr_description(desc_text),
-    )
+        start = start_dt.timetz().replace(tzinfo=None) if start_dt else None
+        end = end_dt.timetz().replace(tzinfo=None) if end_dt else None
+
+        leaders = _format_leaders(raw.get("Leaders"))
+        description = clean_multiline_text(raw.get("Description") or "")
+        details_parts = [p for p in (leaders, description) if p]
+        details = "\n\n".join(details_parts)
+
+        details_ref = _normalize_url(raw.get("ArticleLink"))
+
+        parsed.append((start_dt, _PrItem(start_time=start, end_time=end, title=title, details_ref=details_ref, details_summary=details)))
+
+    parsed.sort(key=lambda x: x[0] or datetime.min)
+
+    seen: set[tuple[str, str]] = set()
+    out: list[_PrItem] = []
+    for _, item in parsed:
+        key = (item.start_time.strftime("%H:%M") if item.start_time else "", item.title.casefold())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+
+    return out
 
 
-def format_pr_programme_details(*, start_time: str, title: str, lead: str, description: str) -> str:
-    header = " ".join([p for p in (start_time, title) if p])
-    parts = [p for p in (header, lead, description) if p]
-    return "\n\n".join(parts)
+def _parse_iso_datetime(value: object) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
 
 
-def _normalize_pr_description(text: str) -> str:
-    t = clean_multiline_text(text)
-    if not t:
+def _format_leaders(value: object) -> str:
+    if not isinstance(value, list):
         return ""
-    lowered = t.casefold()
-    if lowered in {"s", ".", "-", "—", "–"}:
+    names: list[str] = []
+    for leader in value:
+        if not isinstance(leader, dict):
+            continue
+        first = clean_text(leader.get("Name") or "")
+        last = clean_text(leader.get("SurName") or "")
+        full = clean_text(" ".join([p for p in (first, last) if p]))
+        if full:
+            names.append(full)
+    if not names:
         return ""
-    if len(t) <= 2:
-        return ""
-    return t
+    # Keep the original order while removing duplicates case-insensitively.
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for name in names:
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(name)
+    return f"Prowadzący: {', '.join(uniq)}"
+
+
+def _normalize_url(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    url = clean_text(value)
+    if not url:
+        return None
+    if url.startswith("//"):
+        return f"https:{url}"
+    return url

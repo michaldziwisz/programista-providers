@@ -8,7 +8,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `teleman` — Teleman (`https://www.teleman.pl`)
 
 ### Radio (`radio_providers.zip`)
-- `polskieradio` — Polskie Radio (`https://www.polskieradio.pl/Portal/Schedule/Schedule.aspx`)
+- `polskieradio` — Polskie Radio (`https://www.polskieradio.pl/ramowka`)
 - `polskieradio-chopin` — Polskie Radio Chopin (`https://chopin.polskieradio.pl/ramowka`)
 - `polskieradio-dzieciom` — Polskie Radio Dzieciom (`https://www.polskieradio.pl/18/5575/`)
 - `radiokierowcow` — Radio Kierowców (`https://radiokierowcow.pl/ramowka`)

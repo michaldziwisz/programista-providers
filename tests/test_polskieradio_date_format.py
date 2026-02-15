@@ -1,4 +1,5 @@
 import datetime
+import json
 import re
 import sys
 import types
@@ -82,57 +83,60 @@ def _install_tvguide_app_stubs() -> None:
 
 _install_tvguide_app_stubs()
 
-from programista_providers_radio.polskieradio import PolskieRadioProvider  # noqa: E402
-
-
-class _FakeHttp:
-    def __init__(self, *, html: str) -> None:
-        self._html = html
-        self.calls: list[dict[str, object]] = []
-
-    def post_form_text(  # noqa: PLR0913
-        self,
-        url: str,
-        data: dict[str, str],
-        cache_key: str,
-        ttl_seconds: int,
-        force_refresh: bool,
-    ) -> str:
-        self.calls.append(
-            {
-                "url": url,
-                "data": data,
-                "cache_key": cache_key,
-                "ttl_seconds": ttl_seconds,
-                "force_refresh": force_refresh,
-            }
-        )
-        return self._html
+from programista_providers_radio.polskieradio import (  # noqa: E402
+    PR_SCHEDULE_API_URL,
+    _build_pr_schedule_url,
+    parse_pr_schedule_json,
+)
 
 
 class TestPolskieRadioDateFormat(unittest.TestCase):
-    def test_posts_selected_date_as_yyyymmdd(self) -> None:
+    def test_builds_selected_date_as_iso(self) -> None:
         day = datetime.date(2026, 1, 17)
-        html = f"""
-        <div class="scheduleViewContainer">
-          <li>
-            <a onclick="showProgrammeDetails('1','2','00:00','{day.isoformat()}')">
-              <span class="sTime">00:00</span>
-              <span class="desc">Test</span>
-            </a>
-          </li>
-        </div>
-        """
+        url = _build_pr_schedule_url("1", day)
+        self.assertEqual(url, f"{PR_SCHEDULE_API_URL}?Program=1&selectedDate={day.isoformat()}")
 
-        http = _FakeHttp(html=html)
-        provider = PolskieRadioProvider(http)
+    def test_parses_schedule_json_and_normalizes_urls(self) -> None:
+        data = {
+            "Schedule": [
+                {
+                    "AntenaId": 1,
+                    "StartHour": "2026-01-17T01:00:00+01:00",
+                    "StopHour": "2026-01-17T02:00:00+01:00",
+                    "Title": "  Test  ",
+                    "Description": "Opis\\nDrugia linia",
+                    "ArticleLink": "//www.polskieradio.pl/7/5069/Artykul/123,Test",
+                    "Leaders": [{"Name": "Jan", "SurName": "Kowalski"}, {"Name": "jan", "SurName": "kowalski"}],
+                },
+                {
+                    "AntenaId": 1,
+                    "StartHour": "2026-01-17T00:00:00+01:00",
+                    "StopHour": "2026-01-17T01:00:00+01:00",
+                    "Title": "First",
+                    "Description": "",
+                    "ArticleLink": "",
+                    "Leaders": None,
+                },
+            ]
+        }
 
-        parsed = provider._get_multischedule(day, force_refresh=False)
+        items = parse_pr_schedule_json(json.dumps(data, ensure_ascii=False))
+        self.assertEqual([i.title for i in items], ["First", "Test"])
 
-        self.assertEqual(http.calls[0]["data"], {"selectedDate": "20260117"})
-        self.assertEqual(parsed["Jedynka"][0].details_ref, f"1|2|00:00|{day.isoformat()}")
+        self.assertEqual(items[0].start_time, datetime.time(0, 0))
+        self.assertEqual(items[0].end_time, datetime.time(1, 0))
+        self.assertIsNone(items[0].details_ref)
+        self.assertEqual(items[0].details_summary, "")
+
+        self.assertEqual(items[1].start_time, datetime.time(1, 0))
+        self.assertEqual(items[1].end_time, datetime.time(2, 0))
+        self.assertEqual(items[1].details_ref, "https://www.polskieradio.pl/7/5069/Artykul/123,Test")
+        self.assertIn("Prowadzący: Jan Kowalski", items[1].details_summary)
+        self.assertIn("Opis", items[1].details_summary)
+
+    def test_returns_empty_on_invalid_json(self) -> None:
+        self.assertEqual(parse_pr_schedule_json("{nope"), [])
 
 
 if __name__ == "__main__":
     unittest.main()
-
