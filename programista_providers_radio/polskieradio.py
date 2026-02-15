@@ -218,6 +218,50 @@ def _build_pr_schedule_url(programme_id: str, day: date) -> str:
     return f"{PR_SCHEDULE_API_URL}?Program={programme_id}&selectedDate={day.isoformat()}"
 
 
+_PR_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]*>")
+_PR_TRIVIAL_TEXT_RE = re.compile(r"^[\s\W_]+$", flags=re.UNICODE)
+
+
+def _clean_pr_rich_text(value: object) -> str:
+    if value is None:
+        return ""
+
+    text = str(value)
+    if not text:
+        return ""
+
+    text = text.replace("\r\n", "\n").replace("\r", "\n").replace("\xa0", " ")
+
+    if _PR_HTML_TAG_RE.search(text):
+        try:
+            soup = BeautifulSoup(text, "lxml")
+            for el in soup(["script", "style"]):
+                el.decompose()
+            for br in soup.find_all("br"):
+                br.replace_with("\n")
+            for block in soup.find_all(["p", "li"]):
+                block.append("\n")
+            text = soup.get_text(" ")
+        except Exception:  # noqa: BLE001
+            text = re.sub(r"<[^>]+>", " ", text)
+
+    cleaned = clean_multiline_text(text)
+    if not cleaned:
+        return ""
+
+    lines = cleaned.split("\n")
+    while lines and (not lines[0] or _PR_TRIVIAL_TEXT_RE.fullmatch(lines[0])):
+        lines.pop(0)
+    while lines and (not lines[-1] or _PR_TRIVIAL_TEXT_RE.fullmatch(lines[-1])):
+        lines.pop()
+
+    cleaned = clean_multiline_text("\n".join(lines))
+    if not cleaned or _PR_TRIVIAL_TEXT_RE.fullmatch(cleaned):
+        return ""
+
+    return cleaned
+
+
 def parse_pr_schedule_json(text: str) -> list[_PrItem]:
     try:
         data = json.loads(text)
@@ -244,7 +288,7 @@ def parse_pr_schedule_json(text: str) -> list[_PrItem]:
         end = end_dt.timetz().replace(tzinfo=None) if end_dt else None
 
         leaders = _format_leaders(raw.get("Leaders"))
-        description = clean_multiline_text(raw.get("Description") or "")
+        description = _clean_pr_rich_text(raw.get("Description"))
         details_parts = [p for p in (leaders, description) if p]
         details = "\n\n".join(details_parts)
 
@@ -391,8 +435,8 @@ def parse_pr_audycje_details_html(html: str) -> _PrAudycjeDetails:
     if not isinstance(details, dict):
         details = {}
 
-    lead = clean_multiline_text(details.get("lead") or "")
-    description = clean_multiline_text(details.get("description") or "")
+    lead = _clean_pr_rich_text(details.get("lead"))
+    description = _clean_pr_rich_text(details.get("description"))
 
     hosts_raw = pp.get("hosts")
     hosts: list[str] = []

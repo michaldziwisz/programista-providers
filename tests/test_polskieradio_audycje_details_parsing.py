@@ -146,6 +146,30 @@ class TestPolskieRadioAudycjeDetailsParsing(unittest.TestCase):
         self.assertEqual(details.lead, "Linia 1\nLinia 2")
         self.assertEqual(details.description, "Opis")
 
+    def test_strips_html_tags_and_trims_trivial_paragraphs(self) -> None:
+        payload = {
+            "props": {
+                "pageProps": {
+                    "details": {
+                        "name": "Test Show",
+                        "lead": "<p>Linia <strong>1</strong></p><p>Linia 2</p>",
+                        "description": "<p>Opis <strong>pełny</strong></p><p>.</p>",
+                        "station": "Jedynka",
+                    },
+                    "hosts": [],
+                }
+            }
+        }
+
+        html = (
+            "<html><body>"
+            f'<script id="__NEXT_DATA__" type="application/json">{json.dumps(payload, ensure_ascii=False)}</script>'
+            "</body></html>"
+        )
+        details = parse_pr_audycje_details_html(html)
+        self.assertEqual(details.lead, "Linia 1\nLinia 2")
+        self.assertEqual(details.description, "Opis pełny")
+
 
 if __name__ == "__main__":
     unittest.main()
