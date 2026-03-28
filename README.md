@@ -6,6 +6,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 
 ### TV (`tv_providers.zip`)
 - `teleman` — Teleman (`https://www.teleman.pl`)
+- `wpolsce24` — wPolsce24 (`https://wpolsce24.tv/ramowka`)
 
 ### Radio (`radio_providers.zip`)
 - `polskieradio` — Polskie Radio (`https://www.polskieradio.pl/ramowka`)
