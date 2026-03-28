@@ -20,6 +20,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `radiolublin` — Radio Lublin (`https://radio.lublin.pl/ramowka/`)
 - `radioolsztyn` — Radio Olsztyn (`https://radioolsztyn.pl/mvc/ramowka/date/`)
 - `radiopoznan` — Radio Poznań (`https://radiopoznan.fm/program/`)
+- `radiownet` — Radio Wnet (`https://wnet.fm/ramowka`)
 - `radiogdansk` — Radio Gdańsk (`https://radiogdansk.pl/ramowka-radia-gdansk/`)
 - `radiokatowice` — Radio Katowice (`https://www.radio.katowice.pl/ramowka.html`)
 - `radioszczecin` — Radio Szczecin (`https://radioszczecin.pl/9,0,program-radia-szczecin`)

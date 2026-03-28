@@ -14,6 +14,7 @@ from programista_providers_radio.radio357 import Radio357Provider
 from programista_providers_radio.radiolublin import RadioLublinProvider
 from programista_providers_radio.radioolsztyn import RadioOlsztynProvider
 from programista_providers_radio.radiopoznan import RadioPoznanProvider
+from programista_providers_radio.radiownet import RadioWnetProvider
 from programista_providers_radio.radiowroclaw import RadioWroclawProvider
 from programista_providers_radio.radiogdansk import RadioGdanskProvider
 from programista_providers_radio.radiokatowice import RadioKatowiceProvider
@@ -39,6 +40,7 @@ def load(http: HttpClient) -> list[ScheduleProvider]:
         Radio357Provider(http),
         RadioOlsztynProvider(http),
         RadioPoznanProvider(http),
+        RadioWnetProvider(http),
         RadioWroclawProvider(http),
         RadioGdanskProvider(http),
         RadioKatowiceProvider(http),
