@@ -14,7 +14,7 @@ def load(http: HttpClient) -> list[ScheduleProvider]:
     return [
         TelemanProvider(http),
         TvpVodLiveProvider(http),
-        TvpExtraTvProvider(http),
         Wpolsce24Provider(http),
         KanalZeroProvider(http),
+        TvpExtraTvProvider(http),
     ]

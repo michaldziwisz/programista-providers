@@ -57,15 +57,21 @@ class KanalZeroProvider(ScheduleProvider):
         force_refresh: bool = False,
     ) -> list[ScheduleItem]:
         schedule_url = _kanalzero_schedule_url(day)
-        html = self._http.get_text(
-            schedule_url,
-            cache_key=f"kanalzero:telemagazyn:{day.isoformat()}",
-            ttl_seconds=60 * 60,
-            force_refresh=force_refresh,
-            timeout_seconds=20.0,
-        )
-        items = parse_kanalzero_schedule_page(html)
-        if not items and _looks_like_telemagazyn_challenge(html):
+        html = ""
+        direct_error: Exception | None = None
+        try:
+            html = self._http.get_text(
+                schedule_url,
+                cache_key=f"kanalzero:telemagazyn:{day.isoformat()}",
+                ttl_seconds=60 * 60,
+                force_refresh=force_refresh,
+                timeout_seconds=20.0,
+            )
+        except Exception as e:  # noqa: BLE001
+            direct_error = e
+
+        items = parse_kanalzero_schedule_page(html) if html else []
+        if not items and (direct_error is not None or _looks_like_telemagazyn_challenge(html)):
             reader_text = self._http.get_text(
                 _jina_reader_url(schedule_url),
                 cache_key=f"kanalzero:jina:{day.isoformat()}",

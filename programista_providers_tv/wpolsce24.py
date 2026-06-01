@@ -109,7 +109,7 @@ def parse_wpolsce24_schedule_page(html: str) -> dict[str, list[_Wpolsce24Item]]:
     soup = BeautifulSoup(html, "lxml")
 
     out: dict[str, list[_Wpolsce24Item]] = {}
-    for details in soup.select("div.description details"):
+    for details in soup.select("details"):
         summary = details.find("summary")
         key = _map_wpolsce24_summary_to_key(summary.get_text(" ", strip=True) if summary else "")
         if not key or key in out:
@@ -120,6 +120,14 @@ def parse_wpolsce24_schedule_page(html: str) -> dict[str, list[_Wpolsce24Item]]:
             parsed = _parse_wpolsce24_block(block)
             if parsed is not None:
                 items.append(parsed)
+        if not items:
+            for time_col in details.select("div.time-col"):
+                block = time_col.parent
+                if block is None:
+                    continue
+                parsed = _parse_wpolsce24_timeline_block(block)
+                if parsed is not None:
+                    items.append(parsed)
 
         items = _fill_wpolsce24_end_times(items)
         if items:
@@ -131,6 +139,8 @@ def parse_wpolsce24_schedule_page(html: str) -> dict[str, list[_Wpolsce24Item]]:
 def _map_wpolsce24_summary_to_key(value: str) -> str | None:
     summary = clean_text(value).casefold()
     summary = summary.replace("▼", "").replace("▾", "").strip()
+    summary = summary.replace("–", "-").replace("—", "-")
+    summary = re.sub(r"\s*-\s*", "-", summary)
     return _WPOLSCE24_SUMMARY_TO_KEY.get(summary)
 
 
@@ -152,6 +162,27 @@ def _parse_wpolsce24_block(block: BeautifulSoup) -> _Wpolsce24Item | None:
         return None
 
     description = clean_multiline_text("\n".join(texts[1:]))
+    return _Wpolsce24Item(start_time=start_time, end_time=None, title=title, description=description)
+
+
+def _parse_wpolsce24_timeline_block(block: BeautifulSoup) -> _Wpolsce24Item | None:
+    time_el = block.select_one(".time-col")
+    title_el = block.select_one(".content-col .title-text")
+    if time_el is None or title_el is None:
+        return None
+
+    start_time = parse_time_hhmm(clean_text(time_el.get_text(" ")))
+    title = _normalize_wpolsce24_title(title_el.get_text(" ", strip=True))
+    if not title:
+        return None
+
+    description_parts: list[str] = []
+    for desc_el in block.select(".content-col .desc-text"):
+        desc = clean_text(desc_el.get_text(" ", strip=True))
+        if desc:
+            description_parts.append(desc)
+
+    description = clean_multiline_text("\n".join(description_parts))
     return _Wpolsce24Item(start_time=start_time, end_time=None, title=title, description=description)
 
 

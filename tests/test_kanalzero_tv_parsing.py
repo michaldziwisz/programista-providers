@@ -233,6 +233,14 @@ class _FakeHttpClient:
         return self._html
 
 
+class _FailingDirectHttpClient(_FakeHttpClient):
+    def get_text(self, *args, **kwargs) -> str:
+        self.calls.append((args, kwargs))
+        if args and str(args[0]).startswith("https://r.jina.ai/http://"):
+            return self._reader_text if self._reader_text is not None else self._html
+        raise RuntimeError("403 Client Error")
+
+
 class TestKanalZeroTvParsing(unittest.TestCase):
     def test_parses_schedule_items_and_cleans_html_descriptions(self) -> None:
         parsed = parse_kanalzero_schedule_page(SAMPLE_HTML)
@@ -299,6 +307,19 @@ class TestKanalZeroTvParsing(unittest.TestCase):
             "https://r.jina.ai/http://https://telemagazyn.pl/stacje/kanal-zero?dzien=2026-05-22",
         )
         self.assertEqual(http.calls[1][1]["cache_key"], "kanalzero:jina:2026-05-22")
+
+    def test_provider_falls_back_to_jina_reader_after_telemagazyn_http_error(self) -> None:
+        http = _FailingDirectHttpClient("", SAMPLE_JINA_MARKDOWN)
+        provider = KanalZeroProvider(http)
+        source = provider.list_sources()[0]
+
+        items = provider.get_schedule(source, date(2026, 5, 22))
+
+        self.assertEqual([item.title for item in items], ["Gospodarcze Zero", "Godzina Zero", "Zero ściemy"])
+        self.assertEqual(
+            http.calls[1][0][0],
+            "https://r.jina.ai/http://https://telemagazyn.pl/stacje/kanal-zero?dzien=2026-05-22",
+        )
 
 
 if __name__ == "__main__":

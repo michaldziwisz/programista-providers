@@ -166,11 +166,14 @@ class _FakeHttpClient:
 
 
 class TestTvpVodLiveTvParsing(unittest.TestCase):
-    def test_loader_prioritizes_vod_live_provider_before_tvp_extra(self) -> None:
+    def test_loader_prioritizes_single_channel_tv_providers_before_tvp_extra(self) -> None:
         providers = programista_providers_tv.load(_FakeHttpClient("{}"))
         provider_ids = [provider.provider_id for provider in providers]
 
-        self.assertLess(provider_ids.index("tvp-vod-live"), provider_ids.index("tvp-extra"))
+        tvp_extra_idx = provider_ids.index("tvp-extra")
+        self.assertLess(provider_ids.index("tvp-vod-live"), tvp_extra_idx)
+        self.assertLess(provider_ids.index("wpolsce24"), tvp_extra_idx)
+        self.assertLess(provider_ids.index("kanalzero"), tvp_extra_idx)
 
     def test_parses_programmes_and_clamps_items_to_requested_day(self) -> None:
         parsed = parse_tvp_vod_live_programmes(SAMPLE_JSON, date(2026, 6, 2))

@@ -195,6 +195,38 @@ SAMPLE_HTML = """
 </body></html>
 """
 
+SAMPLE_TIMELINE_HTML = """
+<html><body>
+  <details>
+    <summary class="section-title">Poniedziałek – Piątek <span>▼</span></summary>
+    <div>
+      <div style="display: flex;">
+        <div class="time-col"><span>06:00</span></div>
+        <div class="dot-col"></div>
+        <div class="content-col">
+          <div>
+            <div class="title-text">Wiadomości Poranne</div>
+            <a href="https://wpolsce24.tv/video">na żywo</a>
+          </div>
+          <div class="desc-text">Program informacyjny</div>
+          <span>informacje</span>
+        </div>
+      </div>
+      <div style="display: flex;">
+        <div class="time-col"><span>06:15</span></div>
+        <div class="dot-col"></div>
+        <div class="content-col">
+          <div>
+            <div class="title-text">Wiadomości Agro</div>
+          </div>
+          <div class="desc-text">Program informacyjny (N)</div>
+        </div>
+      </div>
+    </div>
+  </details>
+</body></html>
+"""
+
 
 class _FakeHttpClient:
     def __init__(self, html: str) -> None:
@@ -224,6 +256,15 @@ class TestWpolsce24TvParsing(unittest.TestCase):
 
         sunday = parsed["sunday"]
         self.assertEqual(sunday[0].title, "Studio Magdaleny Ogórek")
+
+    def test_parses_current_timeline_layout(self) -> None:
+        parsed = parse_wpolsce24_schedule_page(SAMPLE_TIMELINE_HTML)
+
+        weekday = parsed["weekday"]
+        self.assertEqual([item.title for item in weekday], ["Wiadomości Poranne", "Wiadomości Agro"])
+        self.assertEqual(weekday[0].description, "Program informacyjny")
+        self.assertEqual(weekday[0].end_time, time(6, 15))
+        self.assertIsNone(weekday[1].end_time)
 
     def test_provider_selects_section_by_day_of_week(self) -> None:
         provider = Wpolsce24Provider(_FakeHttpClient(SAMPLE_HTML))
