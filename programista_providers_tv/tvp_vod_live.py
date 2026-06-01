@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 from urllib.parse import urlencode
-from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 
@@ -20,7 +19,6 @@ TVP_VOD_LIVE_PAGE = "https://vod.tvp.pl/live,1/tvp-muzyka-i-koncerty,2999109"
 TVP_VOD_LIVE_SOURCE_ID = "tvp-muzyka-i-koncerty"
 TVP_VOD_LIVE_SOURCE_NAME = "TVP Muzyka i Koncerty"
 TVP_VOD_LIVE_ID = 2999109
-_WARSAW = ZoneInfo("Europe/Warsaw")
 
 
 class TvpVodLiveProvider(ScheduleProvider):
@@ -94,8 +92,8 @@ class _TvpVodLiveItem:
 
 
 def _tvp_vod_programmes_url(day: date, live_id: int) -> str:
-    day_start = datetime.combine(day, time.min, tzinfo=_WARSAW)
-    day_end = day_start + timedelta(days=1)
+    day_start = _warsaw_datetime(day, time.min)
+    day_end = _warsaw_datetime(day + timedelta(days=1), time.min)
     query = urlencode(
         [
             ("platform", "BROWSER"),
@@ -120,8 +118,8 @@ def parse_tvp_vod_live_programmes(text: str, day: date) -> list[_TvpVodLiveItem]
     if not isinstance(raw_items, list):
         return []
 
-    day_start = datetime.combine(day, time.min, tzinfo=_WARSAW)
-    day_end = day_start + timedelta(days=1)
+    day_start = _warsaw_datetime(day, time.min)
+    day_end = _warsaw_datetime(day + timedelta(days=1), time.min)
 
     items: list[_TvpVodLiveItem] = []
     for raw_item in raw_items:
@@ -169,12 +167,51 @@ def _parse_tvp_vod_datetime(value: Any) -> datetime | None:
     except ValueError:
         return None
     if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=_WARSAW)
-    return parsed.astimezone(_WARSAW)
+        return _localize_warsaw(parsed)
+    return _to_warsaw(parsed)
 
 
 def _local_time(value: datetime) -> time:
-    return value.astimezone(_WARSAW).time().replace(tzinfo=None, microsecond=0)
+    return _to_warsaw(value).time().replace(tzinfo=None, microsecond=0)
+
+
+def _warsaw_datetime(day: date, value: time) -> datetime:
+    naive = datetime.combine(day, value)
+    return _localize_warsaw(naive)
+
+
+def _localize_warsaw(value: datetime) -> datetime:
+    offset = timedelta(hours=_warsaw_offset_hours_for_local(value.replace(tzinfo=None)))
+    return value.replace(tzinfo=timezone(offset))
+
+
+def _to_warsaw(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return _localize_warsaw(value)
+    utc_naive = value.astimezone(timezone.utc).replace(tzinfo=None)
+    offset = timedelta(hours=_warsaw_offset_hours_for_utc(utc_naive))
+    return (utc_naive + offset).replace(tzinfo=timezone(offset))
+
+
+def _warsaw_offset_hours_for_local(value: datetime) -> int:
+    start = datetime.combine(_last_sunday(value.year, 3), time(2, 0))
+    end = datetime.combine(_last_sunday(value.year, 10), time(3, 0))
+    return 2 if start <= value < end else 1
+
+
+def _warsaw_offset_hours_for_utc(value: datetime) -> int:
+    start = datetime.combine(_last_sunday(value.year, 3), time(1, 0))
+    end = datetime.combine(_last_sunday(value.year, 10), time(1, 0))
+    return 2 if start <= value < end else 1
+
+
+def _last_sunday(year: int, month: int) -> date:
+    if month == 12:
+        last_day = date(year + 1, 1, 1) - timedelta(days=1)
+    else:
+        last_day = date(year, month + 1, 1) - timedelta(days=1)
+    days_since_sunday = (last_day.weekday() + 1) % 7
+    return last_day - timedelta(days=days_since_sunday)
 
 
 def _tvp_vod_description(raw: dict[str, Any]) -> str:

@@ -210,6 +210,34 @@ class TestTvpVodLiveTvParsing(unittest.TestCase):
         self.assertIn("liveId%5B%5D=2999109", http.calls[0][0][0])
         self.assertEqual(http.calls[0][1]["cache_key"], "tvp-vod-live:2999109:2026-06-02")
 
+    def test_provider_builds_winter_tvp_vod_api_url(self) -> None:
+        http = _FakeHttpClient("[]")
+        provider = TvpVodLiveProvider(http)
+        source = provider.list_sources()[0]
+
+        provider.get_schedule(source, date(2026, 1, 5))
+
+        self.assertIn("since=2026-01-05T00%3A00%2B0100", http.calls[0][0][0])
+        self.assertIn("till=2026-01-06T00%3A00%2B0100", http.calls[0][0][0])
+
+    def test_parses_utc_programme_times_as_warsaw_time(self) -> None:
+        parsed = parse_tvp_vod_live_programmes(
+            """
+            [
+              {
+                "title": "Koncert",
+                "since": "2026-01-05T12:00:00+00:00",
+                "till": "2026-01-05T13:30:00+00:00"
+              }
+            ]
+            """,
+            date(2026, 1, 5),
+        )
+
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0].start_time, time(13, 0))
+        self.assertEqual(parsed[0].end_time, time(14, 30))
+
 
 if __name__ == "__main__":
     unittest.main()
