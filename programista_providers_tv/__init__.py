@@ -4,6 +4,7 @@ from tvguide_app.core.http import HttpClient
 from tvguide_app.core.providers.base import ScheduleProvider
 
 from programista_providers_tv.kanalzero import KanalZeroProvider
+from programista_providers_tv.polotv import PoloTvProvider
 from programista_providers_tv.teleman import TelemanProvider
 from programista_providers_tv.tvp_extra import TvpExtraTvProvider
 from programista_providers_tv.tvp_vod_live import TvpVodLiveProvider
@@ -16,5 +17,6 @@ def load(http: HttpClient) -> list[ScheduleProvider]:
         TvpVodLiveProvider(http),
         Wpolsce24Provider(http),
         KanalZeroProvider(http),
+        PoloTvProvider(http),
         TvpExtraTvProvider(http),
     ]

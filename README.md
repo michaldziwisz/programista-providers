@@ -8,6 +8,7 @@ Repo z paczkami dostawców treści (TV / Radio / Archiwum) dla aplikacji desktop
 - `teleman` — Teleman (`https://www.teleman.pl`)
 - `wpolsce24` — wPolsce24 (`https://wpolsce24.tv/ramowka`)
 - `kanalzero` — Kanał Zero (`https://telemagazyn.pl/stacje/kanal-zero`)
+- `polotv` — Polo TV (`https://www.polotv.pl/program-tv/`)
 - `tvp-vod-live` — TVP Muzyka i Koncerty (`https://vod.tvp.pl/live,1/tvp-muzyka-i-koncerty,2999109`)
 
 ### Radio (`radio_providers.zip`)
